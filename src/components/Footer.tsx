@@ -61,14 +61,9 @@ export const Footer: React.FC = () => {
             >
               Install
             </Link>
-            <Link
-              to="/nvim"
-              className="text-text-muted hover:text-text-primary transition-colors"
-            >
-              Neovim
-            </Link>
+
             <a
-              href="https://github.com/prjctimg/gtm"
+              href="https://github.com/craftty-org/gtm"
               target="_blank"
               rel="noreferrer"
               className="text-text-muted hover:text-text-primary transition-colors inline-flex items-center"

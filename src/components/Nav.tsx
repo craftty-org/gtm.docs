@@ -73,7 +73,7 @@ export const Nav: React.FC<NavProps> = ({ onOpenSearch }) => {
 
           {/* GitHub Icon Link */}
           <a
-            href="https://github.com/prjctimg/gtm"
+            href="https://github.com/craftty-org/gtm"
             target="_blank"
             rel="noreferrer"
             className="flex items-center justify-center p-2 text-text-muted hover:text-text-primary border border-hairline-outline hover:border-text-muted rounded bg-surface-container hover:bg-surface-elevated transition-colors min-h-[38px] min-w-[38px]"

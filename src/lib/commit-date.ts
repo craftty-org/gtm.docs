@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
  * no timestamp in the frontmatter to fall out of date, and no generator script to
  * forget to run.
  */
-const DOCS_REPO = 'prjctimg/gtm.docs';
+const DOCS_REPO = 'craftty-org/gtm.docs';
 
 export const CONTENT_BLOB_URL = `https://github.com/${DOCS_REPO}/blob/main/content`;
 

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# gtm installer — see https://github.com/prjctimg/gtm
+# gtm installer — see https://gtmd.dev
 #
 # Usage:
 #   curl -fsSL https://gtmd.dev/install.sh | bash
 #   install.sh                        # download and install the release for this system
 #   install.sh --version 0.2.83       # pin a specific release
+#   install.sh --nightly              # install the latest nightly prerelease
 #   install.sh --prefix ~/.local      # install under a custom prefix
 #
 # When run from inside a gtm release archive (bin/gtm + bin/gtmd sit next to
@@ -23,7 +24,7 @@
 
 set -euo pipefail
 
-REPO="prjctimg/gtm"
+REPO="craftty-org/gtm"
 
 NC='\033[0m'
 MUTED='\033[0;2m'
@@ -40,6 +41,7 @@ Usage: install.sh [options]
 Options:
   -h, --help            Show this help message
   -v, --version <ver>   Install a specific version (e.g. 0.2.83)
+      --nightly         Install the latest nightly prerelease
   -p, --prefix <dir>    Install prefix for the tarball (default: \$HOME/.local)
   -y, --yes             Non-interactive: never prompt (e.g. to enable gtmd)
 
@@ -333,13 +335,31 @@ resolve_latest_stable_tag() {
 #
 # Sets ASSET_URL and RELEASE_NAME instead of printing the URL: a `$(...)` capture
 # would run this in a subshell, where the release name — the only source of the
-# nightly's commit — is discarded.
+# nightly's commit — is discarded. RELEASE_LOADED (1 when the API answered) and
+# API_STATUS (the HTTP code when it did not) come back the same way, so the
+# caller can tell a release that carries no such archive from one it could not
+# read at all.
 #   resolve_asset_url <tag> <archive> [strict]
 resolve_asset_url() {
   local tag="$1" archive="$2" strict="${3:-0}"
   local direct="https://github.com/${REPO}/releases/download/${tag}/${archive}"
   local body head
   body="$(api_get "https://api.github.com/repos/${REPO}/releases/tags/${tag}" 2>/dev/null)" || body=""
+  # Loading the release and holding this archive are two facts, and the nightly
+  # path reported both with one message. Keep enough to tell them apart.
+  RELEASE_LOADED=0
+  API_STATUS=""
+  if [ -n "${body}" ]; then
+    RELEASE_LOADED=1
+  else
+    # `api_get` is `-f`, so the status is gone with the body. Ask once more for
+    # the status alone (no `-f`, so an HTTP error still prints its code): 404 is
+    # a release mid-build or left as a draft, 403/429 is the unauthenticated
+    # rate limit, 000 is no connection at all. `|| true` keeps `set -e` from
+    # aborting on the connection-failure exit code — `-w` has already printed.
+    API_STATUS="$(curl "${CURL_WAIT[@]}" -o /dev/null -w '%{http_code}' \
+      "https://api.github.com/repos/${REPO}/releases/tags/${tag}" 2>/dev/null || true)"
+  fi
   # A release shares its `"name"` key with every asset it carries, but the assets
   # all sit inside the `assets` array, so cutting the body at that key leaves the
   # release's own name as the only match.
@@ -386,7 +406,28 @@ bootstrap_install() {
     # resolves to a clear "try again" instead of a dead 404 URL.
     resolve_asset_url "${tag}" "${archive_name}" 1 || {
       stage_fail
-      die "nightly archive '${archive_name}' is not published yet — the latest nightly build may still be running or failed. Retry in a few minutes, or install a stable release with: install.sh --version <ver>"
+      # `RELEASE_LOADED` splits the one failure this message used to report into
+      # the two it actually is: the release was read — so this platform has no
+      # archive in it — or it was not, and `API_STATUS` says why.
+      if [ "${RELEASE_LOADED}" = 1 ]; then
+        # `nightly_keep` in release.yml builds the two targets the maintainer
+        # runs, and nothing else.
+        die "the nightly release carries no archive for ${PLATFORM}. Nightlies are built only for Linux aarch64 (glibc) and Android aarch64. Install a stable release with: install.sh --version <ver>"
+      fi
+      case "${API_STATUS}" in
+        403|429)
+          die "GitHub is rate-limiting this machine (HTTP ${API_STATUS}), so the nightly cannot be resolved right now. Retry in a few minutes."
+          ;;
+        404)
+          die "the nightly release is not readable yet (HTTP 404) — the build may still be running, or a failed run left it as a draft. Check https://github.com/${REPO}/actions, then retry."
+          ;;
+        000)
+          die "could not reach api.github.com to resolve the nightly. Check your network, then retry."
+          ;;
+        *)
+          die "could not resolve the nightly archive '${archive_name}' (GitHub returned HTTP ${API_STATUS:-error}). Retry in a few minutes."
+          ;;
+      esac
     }
   else
     resolve_asset_url "${tag}" "${archive_name}"
